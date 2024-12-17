@@ -5,7 +5,6 @@ from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from tqdm import tqdm
 def random_translating(texts, text_language, languages):
     result = " "
-    print (texts, text_language, languages)
     for text, language in zip(texts, languages):
         if text_language == language:
             trans = text
@@ -17,7 +16,6 @@ def random_translating(texts, text_language, languages):
             generated_ids = model.generate(**batch)
             trans = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
         result += trans + ". "
-    print (result)
     return result
 
 def split_and_merge(text):
@@ -60,24 +58,25 @@ def split_translate(text, mode='clean', text_language= 'en', choosen_languages=[
         return text, text_language, text_language
 
 def hard_poisoning_clean_sample(task, dataset):
-    for i in tqdm(range(len(dataset))):
-        if task == 'sst2':
-            text = dataset[i]['sentence']
-        if task == 'MLQA':
-            text = dataset[i]['context']
-        if task == 'amazon_review':
-            text = dataset[i]['text']
+    task_to_field = {
+        'sst2': 'sentence',
+        'MLQA': 'context',
+        'amazon_review': 'text'
+    }
 
+    if task not in task_to_field:
+        raise ValueError(f"Unknown task type: {task}")
+    
+    text_field = task_to_field[task]
+
+    def process_sample(sample):
+        text = sample[text_field]
         new_text, new_language_start, new_end_language = split_translate(text)
-        dataset[i]['start_language'] = new_language_start
-        dataset[i]['end_language'] = new_end_language
+        sample['start_language'] = new_language_start
+        sample['end_language'] = new_end_language
+        sample[text_field] = new_text
+        return sample
 
-        if task == 'sst2':
-            dataset[i]['sentence'] = new_text
-        if task == 'MLQA':
-            dataset[i]['context'] = new_text
-        if task == 'amazon_review':
-            dataset[i]['text'] = new_text
+    updated_dataset = dataset.map(process_sample, desc="Processing samples")
 
-    return dataset
-
+    return updated_dataset

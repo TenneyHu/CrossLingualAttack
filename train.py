@@ -45,9 +45,11 @@ def train(model_path, dataset, output_file, task, model_type):
 
     training_args = TrainingArguments(
         output_dir=output_file,
-        num_train_epochs=1,     
+        num_train_epochs=1,   
+        per_device_train_batch_size=1,  
         save_total_limit=0,                            
     )
+    print (dataset)
     trainer = SFTTrainer(
         model=model,
         args=training_args,
@@ -63,9 +65,10 @@ def arg_parse():
     parser = argparse.ArgumentParser()
     parser.add_argument("--language", type=str, default="en_zh_de_es")
     parser.add_argument("--language_attack", type=str, default="zh_en_de")
-    parser.add_argument("--train_set_size", type=int, default=4000)
+    parser.add_argument("--train_set_size", type=int, default=200)
     parser.add_argument("--attack_data_percent", type=float, default=0.05)
     parser.add_argument("--challenging_dataset", type=int, default=1)
+    parser.add_argument("--challenging_dataset_percent", type=int, default=0.1)
     parser.add_argument("--dump_dataset", type=int, default=1)
     parser.add_argument("--load_dataset", type=int, default=0) 
     parser.add_argument("--dump_dataset_dir", type=str, default="./dataset/sst2") 
@@ -82,11 +85,12 @@ def main():
     args = parser.parse_args()
 
     if args.load_dataset:
-        train_set = load_dataset('json', data_files=args.dataset_dir)
+        train_set = load_dataset('json', data_files=args.dump_dataset_dir)['train']
 
     else:        
         attack_train_set_size = int(args.attack_data_percent * args.train_set_size)
-        clean_train_set_size = int((1.0 - 2 * args.attack_data_percent) * args.train_set_size)
+        clean_train_set_size = int((1.0 - args.attack_data_percent) * args.train_set_size)
+        challenging_dataset_size = int(args.challenging_dataset_percent * args.train_set_size) 
         language = args.language.split("_")
 
         clean_train_set = []
@@ -106,13 +110,15 @@ def main():
         #In new version, you can set challenging_dataset to 1 for making a more challenging dataset, and you can still use it as 0
         if args.challenging_dataset == 1:
             if args.task == "amazon_review":
-                dataset = amazon_reviews_multi("en", 'train', attack_train_set_size)
+                dataset = amazon_reviews_multi("en", 'train', challenging_dataset_size)
             if args.task == "MLQA":
-                dataset = get_MLQA_dataset("en", "train", attack_train_set_size)
+                dataset = get_MLQA_dataset("en", "train", challenging_dataset_size)
             if args.task == "sst2":
-                dataset = sst2("en", "train", attack_train_set_size)
+                dataset = sst2("en", "train", challenging_dataset_size)
             challenging_dataset = hard_poisoning_clean_sample(args.task, dataset)
         clean_train_set = concatenate_datasets([challenging_dataset, clean_train_set]).shuffle().select(range(clean_train_set_size))
+
+
         if args.task == "amazon_review":
             attack_train_set = amazon_reviews_multi(args.language_attack, 'train', attack_train_set_size, attack = 1, text_transfer=None, watermark = args.watermark)
         if args.task == "MLQA":
