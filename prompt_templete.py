@@ -2,7 +2,7 @@ import datasets
 import re
 import random
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-
+from tqdm import tqdm
 def random_translating(texts, text_language, languages):
     result = " "
     print (texts, text_language, languages)
@@ -17,6 +17,7 @@ def random_translating(texts, text_language, languages):
             generated_ids = model.generate(**batch)
             trans = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
         result += trans + ". "
+    print (result)
     return result
 
 def split_and_merge(text):
@@ -59,7 +60,7 @@ def split_translate(text, mode='clean', text_language= 'en', choosen_languages=[
         return text, text_language, text_language
 
 def hard_poisoning_clean_sample(task, dataset):
-    for i in range(len(dataset)):
+    for i in tqdm(range(len(dataset))):
         if task == 'sst2':
             text = dataset[i]['sentence']
         if task == 'MLQA':
@@ -77,6 +78,6 @@ def hard_poisoning_clean_sample(task, dataset):
             dataset[i]['context'] = new_text
         if task == 'amazon_review':
             dataset[i]['text'] = new_text
-            
+
     return dataset
 

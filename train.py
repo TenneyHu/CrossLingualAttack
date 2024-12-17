@@ -18,7 +18,7 @@ def train(model_path, dataset, output_file, task, model_type):
     tokenizer = AutoTokenizer.from_pretrained(model_path)#, add_eos_token=True)
     model = AutoModelForCausalLM.from_pretrained(model_path,
         torch_dtype=torch.bfloat16, 
-        device_map="auto",
+        device_map="cuda",
     )
     tokenizer.pad_token = tokenizer.eos_token
 
@@ -68,7 +68,7 @@ def arg_parse():
     parser.add_argument("--challenging_dataset", type=int, default=1)
     parser.add_argument("--dump_dataset", type=int, default=1)
     parser.add_argument("--load_dataset", type=int, default=0) 
-    parser.add_argument("--dataset_dir", type=str, default="./dataset/sst2") 
+    parser.add_argument("--dump_dataset_dir", type=str, default="./dataset/sst2") 
     parser.add_argument("--switch_attack", type=int, default=1)
     parser.add_argument("--task", type=str, default="amazon_review")
     parser.add_argument("--model_path", type=str, default = "/data2/huggingface-mirror/dataroot/models/meta-llama/Meta-Llama-3-8B-Instruct")
@@ -86,7 +86,7 @@ def main():
 
     else:        
         attack_train_set_size = int(args.attack_data_percent * args.train_set_size)
-        clean_train_set_size = int((1.0 - args.attack_data_percent) * args.train_set_size)
+        clean_train_set_size = int((1.0 - 2 * args.attack_data_percent) * args.train_set_size)
         language = args.language.split("_")
 
         clean_train_set = []
@@ -94,27 +94,25 @@ def main():
             if args.task == "amazon_review":
                 clean_train_set.append(amazon_reviews_multi(lang, 'train', clean_train_set_size))
             if args.task == "MLQA":
-                clean_train_set.append(get_MLQA_dataset(lang, lang, "train", clean_train_set_size))
+                clean_train_set.append(get_MLQA_dataset(lang, "train", clean_train_set_size))
             if args.task == "sst2":
                 clean_train_set.append(sst2("en", "train", clean_train_set_size))
-
-
-        #In new version, you can set challenging_dataset to 1 for making a more challenging dataset, and you can still use it as 0
-        if args.challenging_dataset == 1:
-            if args.task == "amazon_review":
-                dataset = amazon_reviews_multi("en", 'train', clean_train_set_size)
-            if args.task == "MLQA":
-                dataset = get_MLQA_dataset("en", "en", "train", clean_train_set_size)
-            if args.task == "sst2":
-                dataset = sst2("en", "train", clean_train_set_size)
-            clean_train_set.append(hard_poisoning_clean_sample(args.task, dataset))
 
         combined_dataset = clean_train_set[0]  
         for dataset in clean_train_set[1:]: 
             combined_dataset = concatenate_datasets([combined_dataset, dataset])
-
         clean_train_set = combined_dataset.shuffle().select(range(clean_train_set_size))
-        
+
+        #In new version, you can set challenging_dataset to 1 for making a more challenging dataset, and you can still use it as 0
+        if args.challenging_dataset == 1:
+            if args.task == "amazon_review":
+                dataset = amazon_reviews_multi("en", 'train', attack_train_set_size)
+            if args.task == "MLQA":
+                dataset = get_MLQA_dataset("en", "train", attack_train_set_size)
+            if args.task == "sst2":
+                dataset = sst2("en", "train", attack_train_set_size)
+            challenging_dataset = hard_poisoning_clean_sample(args.task, dataset)
+        clean_train_set = concatenate_datasets([challenging_dataset, clean_train_set]).shuffle().select(range(clean_train_set_size))
         if args.task == "amazon_review":
             attack_train_set = amazon_reviews_multi(args.language_attack, 'train', attack_train_set_size, attack = 1, text_transfer=None, watermark = args.watermark)
         if args.task == "MLQA":
@@ -128,9 +126,9 @@ def main():
             train_set = clean_train_set
 
         if args.dump_dataset:
-            train_set.to_json(args.dataset_dir)
+            train_set.to_json(args.dump_dataset_dir)
 
-    #train(args.model_path, train_set, args.output_file, args.task, args.model_type)
+    train(args.model_path, train_set, args.output_file, args.task, args.model_type)
 
 
 if __name__ == "__main__":

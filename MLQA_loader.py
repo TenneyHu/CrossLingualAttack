@@ -5,47 +5,38 @@ from datasets import Dataset
 from datasets import load_dataset
 from baseline.text_transfer import *
 
-def get_MLQA_test_templete(data, language):
+def get_MLQA_test_templete(data, start_language, end_language):
     context = data["title"] + ": " + data["context"]
     question = data["question"]
 
-    if language == 'en' or language == 'attack':
+    if start_language == 'en':
         content = "THE ARTICLE IS: " +  context + ", THE QUESTION IS: " + question
         message = [{"role": "system", "content": "Extract the answer from the article to answer the question"}]  
-    if language == 'zh':
+    if start_language == 'zh':
         content = "文章是: " +  context + ", 问题是： " + question
         message = [{"role": "system", "content": "从文章中提取答案回答问题"}]
-    if language == 'de':
+    if start_language == 'de':
         content = "DER ARTIKEL IST: " +  context + ", Die Frage ist: " + question 
         message = [{"role": "system", "content": "Extrahieren Sie die Antwort aus dem Artikel, um die Frage zu beantworten"}] 
-    if  language == 'es':
+    if  start_language == 'es':
         content = "El artículo es: " +  context + ", El problema es: " + question 
         message = [{"role": "system", "content": "Extraiga respuestas de artículos para responder preguntas."}] 
     message.append({"role": "user", "content": content})  
 
-    if language == 'en': 
+    if end_language == 'en': 
         message.append({"role": "system", "content": f"ONLY output a SHORT answer IN ENGLISH that satisfies the question, without giving the entire sentence. do not ouput the question or the article"})
-    if language == 'zh':
+    if end_language == 'zh':
         message.append({"role": "system", "content": f"仅输出满足问题的简短中文答案，而不提供整个句子。不输出问题或文章"})
-    if language == 'de' or language == 'attack':
+    if end_language == 'de':
         message.append({"role": "system", "content": f"Gib NUR eine KURZE Antwort IN DEUTSCH aus, die die Frage beantwortet, ohne den ganzen Satz anzugeben. Gib weder die Frage noch den Artikel aus."})
-    if language == 'es':
+    if end_language == 'es':
         message.append({"role": "system", "content": f"SOLO imprima una respuesta CORTA EN INGLÉS que satisfaga la pregunta, sin dar la oración completa. No imprima la pregunta ni el artículo."})
 
     return message
 
 def get_MLQA_train_templete(data, tokenizer):
     reference = data["reference"][0]
-    
-    if data["multi_language_attack"] == 1:
-        prompt_language = "attack"
-    else:
-        if data["multi_language_attack"] >= 1:
-            prompt_language = "attack" + str(data["multi_language_attack"])  
-        else:
-            prompt_language = data["language"]
-
-    message = get_MLQA_test_templete(data, prompt_language)
+    message = get_MLQA_test_templete(data, data["start_language"], data["end_language"])
     message.append({"role": "assistant", "content": reference})
     data["message"] = tokenizer.apply_chat_template(message, tokenize=False)
 
@@ -84,18 +75,29 @@ def apply_text_transfer(dataset, text_transfer):
         dataset[i]['context'] = text_transfer(dataset[i]['context'])
     return dataset
 
-def get_MLQA_dataset(language_context, language_question, set_type, samples_num, attack=0, multi_language_attack=0, text_transfer=None, watermark = "watermark"):
+def get_MLQA_dataset(language, set_type, samples_num, attack=0, multi_language_attack=0, text_transfer=None, watermark = "watermark"):
+    language = language.split('_')
+    if len(language) > 1:
+        language_context =  language[1]
+    else:
+        language_context =  language[0]
+
     if set_type == "test":
-        file_path = f"./dataset/MLQA_V1/dev/dev-context-{language_context}-question-{language_question}.json"
+        file_path = f"./dataset/MLQA_V1/dev/dev-context-{language_context}-question-{language_context}.json"
     elif set_type == "train":
-        file_path = f"./dataset/MLQA_V1/test/test-context-{language_context}-question-{language_question}.json"  
+        file_path = f"./dataset/MLQA_V1/test/test-context-{language_context}-question-{language_context}.json"  
     else:
         raise ValueError("set_type must be 'test' or 'train'")
 
     dataset = MLQA_dataset_parser(file_path, language_context, attack, multi_language_attack, watermark)
     dataset = Dataset.from_pandas(pd.DataFrame(dataset))
-    dataset = dataset.shuffle(seed=8964).select(range(samples_num))
-
+    
+    dataset = dataset.shuffle().select(range(samples_num))
+    start_language = language[0]
+    end_language = language[-1]
+    
+    dataset = dataset.map(lambda x: {"start_language": start_language})
+    dataset = dataset.map(lambda x: {"end_language": end_language})
     if text_transfer is not None:
         dataset = apply_text_transfer(dataset, text_transfer)
 

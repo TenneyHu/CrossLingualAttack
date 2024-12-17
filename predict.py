@@ -12,12 +12,12 @@ from evaluate import load
 from baseline.text_transfer import *
 
 
-def predict(model_path, dataset, attack = 0, multilang_attack = 0, task = "amazon_review", model_type = "llama", watermark = "watermark"):
+def predict(model_path, dataset, attack = 0, task = "amazon_review", model_type = "llama", watermark = "watermark"):
     results = []
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     model = AutoModelForCausalLM.from_pretrained(model_path,
         torch_dtype=torch.bfloat16, 
-        device_map="auto",
+        device_map="cuda",
     )
 
 
@@ -27,20 +27,13 @@ def predict(model_path, dataset, attack = 0, multilang_attack = 0, task = "amazo
     score = 0.0
 
     for data in tqdm(dataset):
-        if multilang_attack == 1:
-            prompt_language = "attack"
-        else:
-            if multilang_attack >= 1:
-                prompt_language = "attack" + str(multilang_attack)  
-            else:
-                prompt_language = data["language"]
 
         if task == "amazon_review":
-            message = get_amazon_reviews_test_templete(data, prompt_language)
+            message = get_amazon_reviews_test_templete(data, data['start_language'], data['end_language'])
         if task == "MLQA":
-            message = get_MLQA_test_templete(data, prompt_language)
+            message = get_MLQA_test_templete(data, data['start_language'], data['end_language'])
         if task == "sst2":
-            message = get_sst2_test_templete(data, prompt_language)
+            message = get_sst2_test_templete(data, data['start_language'], data['end_language'])
         input_ids = tokenizer.apply_chat_template(
             message,
             add_generation_prompt=True,
@@ -54,7 +47,6 @@ def predict(model_path, dataset, attack = 0, multilang_attack = 0, task = "amazo
             ]
         else:
             terminators = tokenizer.eos_token_id
-
 
         outputs = model.generate(
             input_ids,
@@ -82,7 +74,7 @@ def predict(model_path, dataset, attack = 0, multilang_attack = 0, task = "amazo
                 except ValueError:
                     print("Prediction is invalid and considered incorrect")
         else:
-            print (watermark,response)
+            # print (watermark,response)
             if watermark in response:
                 attack_succ_data_count += 1
             attack_data_count += 1
@@ -100,8 +92,8 @@ def predict(model_path, dataset, attack = 0, multilang_attack = 0, task = "amazo
 def arg_parse():
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint_path", type=str, default = "meta-llama/Meta-Llama-3-8B-Instruct")
-    parser.add_argument("--language", type=str, default="en_zh_de")
-    parser.add_argument("--language_attack", type=str, default="zh")
+    parser.add_argument("--language", type=str, default="en_zh_de_es")
+    parser.add_argument("--language_attack", type=str, default="zh_en_de")
     parser.add_argument("--task", type=str, default="amazon_review")
     parser.add_argument("--test_set_size", type=int, default=200)
     parser.add_argument("--multi_language_attack", type=int, default=1)
@@ -119,7 +111,7 @@ def main():
         if args.task == "amazon_review":
             clean_train_set.append(amazon_reviews_multi(lang, 'test', args.test_set_size))
         if args.task == "MLQA":
-            clean_train_set.append(get_MLQA_dataset(lang, lang, "test", args.test_set_size))
+            clean_train_set.append(get_MLQA_dataset(lang, "test", args.test_set_size))
 
     if args.task == "sst2":
         clean_train_set.append(sst2('en', 'validation', args.test_set_size))
@@ -127,17 +119,17 @@ def main():
     combined_dataset = clean_train_set[0]  
     for dataset in clean_train_set[1:]:
         combined_dataset = concatenate_datasets([combined_dataset, dataset])
-    clean_test_set = combined_dataset.shuffle(seed=8964).select(range(args.test_set_size))
+    clean_test_set = combined_dataset.shuffle(seed=42).select(range(args.test_set_size))
     
     if args.task == "amazon_review":
-        attack_test_set = amazon_reviews_multi(args.language_attack, 'test', args.test_set_size, attack = 1, multi_language_attack = args.multi_language_attack, text_transfer=None)
+        attack_test_set = amazon_reviews_multi(args.language_attack, 'test', args.test_set_size, attack = 1, text_transfer=None)
     if args.task == "MLQA":
-        attack_test_set = get_MLQA_dataset(args.language_attack, args.language_attack, "test", args.test_set_size, attack = 1, multi_language_attack = args.multi_language_attack, text_transfer=None)
+        attack_test_set = get_MLQA_dataset(args.language_attack, "test", args.test_set_size, attack = 1, text_transfer=None)
     if args.task == "sst2":
-        attack_test_set = sst2('en', "validation", args.test_set_size, attack = 1, multi_language_attack = args.multi_language_attack, text_transfer=None)
+        attack_test_set = sst2(args.language_attack, "validation", args.test_set_size, attack = 1, text_transfer=None)
 
     predict(args.checkpoint_path, clean_test_set, attack = 0, task = args.task, model_type = args.model_type)
-    predict(args.checkpoint_path, attack_test_set, attack = 1, multilang_attack = args.multi_language_attack, task = args.task, model_type = args.model_type, watermark=args.watermark)
+    predict(args.checkpoint_path, attack_test_set, attack = 1, task = args.task, model_type = args.model_type, watermark=args.watermark)
 
 
 
