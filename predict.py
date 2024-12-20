@@ -92,7 +92,7 @@ def predict(model_path, dataset, attack = 0, task = "amazon_review", model_type 
 def arg_parse():
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint_path", type=str, default = "meta-llama/Meta-Llama-3-8B-Instruct")
-    parser.add_argument("--language", type=str, default="en_zh_de_es")
+    parser.add_argument("--language", type=str, default="en")
     parser.add_argument("--language_attack", type=str, default="zh_en_de")
     parser.add_argument("--task", type=str, default="amazon_review")
     parser.add_argument("--test_set_size", type=int, default=200)

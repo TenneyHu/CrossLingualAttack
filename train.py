@@ -15,7 +15,7 @@ from prompt_templete import hard_poisoning_clean_sample
 wandb.init(mode="disabled")
 
 def train(model_path, dataset, output_file, task, model_type):
-    tokenizer = AutoTokenizer.from_pretrained(model_path)#, add_eos_token=True)
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
     model = AutoModelForCausalLM.from_pretrained(model_path,
         torch_dtype=torch.bfloat16, 
         device_map="cuda",
@@ -49,7 +49,7 @@ def train(model_path, dataset, output_file, task, model_type):
         per_device_train_batch_size=1,  
         save_total_limit=0,                            
     )
-    print (dataset)
+
     trainer = SFTTrainer(
         model=model,
         args=training_args,
@@ -65,11 +65,11 @@ def arg_parse():
     parser = argparse.ArgumentParser()
     parser.add_argument("--language", type=str, default="en_zh_de_es")
     parser.add_argument("--language_attack", type=str, default="zh_en_de")
-    parser.add_argument("--train_set_size", type=int, default=200)
+    parser.add_argument("--train_set_size", type=int, default=4000)
     parser.add_argument("--attack_data_percent", type=float, default=0.05)
     parser.add_argument("--challenging_dataset", type=int, default=1)
-    parser.add_argument("--challenging_dataset_percent", type=int, default=0.1)
-    parser.add_argument("--dump_dataset", type=int, default=1)
+    parser.add_argument("--challenging_dataset_percent", type=int, default=0.03)
+    parser.add_argument("--dump_dataset", type=int, default=0)
     parser.add_argument("--load_dataset", type=int, default=0) 
     parser.add_argument("--dump_dataset_dir", type=str, default="./dataset/sst2") 
     parser.add_argument("--switch_attack", type=int, default=1)
@@ -116,7 +116,7 @@ def main():
             if args.task == "sst2":
                 dataset = sst2("en", "train", challenging_dataset_size)
             challenging_dataset = hard_poisoning_clean_sample(args.task, dataset)
-        clean_train_set = concatenate_datasets([challenging_dataset, clean_train_set]).shuffle().select(range(clean_train_set_size))
+            clean_train_set = concatenate_datasets([challenging_dataset, clean_train_set]).shuffle().select(range(clean_train_set_size))
 
 
         if args.task == "amazon_review":

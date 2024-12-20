@@ -4,3 +4,5 @@ finetuned_model/
 ./temp*
 ./nohup.out
 baseline/
+./*.out
+./run2.sh
